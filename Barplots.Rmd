@@ -1,0 +1,220 @@
+---
+title: "Barplots"
+output: html_notebook
+---
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(clinfun)
+library(ggpubr)
+library(lme4)
+require(RColorBrewer)
+```
+
+```{r}
+d1 = read.csv('/username/anasthesia_barplot_sourceData.csv')
+d2 = read.csv('/username/doc_barplot_sourceData.csv')
+```
+
+```{r normalize-zscore data}
+m1 <- data.matrix(d1)
+m2 <- data.matrix(d2)
+zm1 <- (m1-(mean(m1)))/sd(m1)
+zm2 <- (m2-(mean(m2)))/sd(m2)
+```
+
+```{r organize datafram}
+thals = colnames(zm1)
+newd1 <- data.frame(matrix(0, ncol=3, nrow=nrow(zm1)*ncol(zm1)))
+colnames(newd1) <- c('Subject','Thal', 'dFC')
+
+sblist<-c()
+for (i in 1:nrow(d1)){
+  sb <- sprintf('aes_S%02d', i)
+  sblist[i] <-sb
+}
+
+n<-0
+for (thal in thals){
+  n=n+1
+  newd1[(1+nrow(zm1)*(n-1)):(nrow(zm1)*(n)), 'Thal']<- thal
+  newd1[(1+nrow(zm1)*(n-1)):(nrow(zm1)*(n)), 'dFC']<- zm1[, n]
+  newd1[(1+nrow(zm1)*(n-1)):(nrow(zm1)*(n)), 'Subject']<- sblist
+}
+newd1['Dataset'] <- 'Anaesthesia'
+
+### for DOC
+sblist<-c()
+for (i in 1:nrow(d2)){
+  sb <- sprintf('doc_S%02d', i)
+  sblist[i] <-sb
+}
+
+thals = colnames(zm2)
+newd2 <- data.frame(matrix(0, ncol=2, nrow=nrow(zm2)*ncol(zm2)))
+colnames(newd2) <- c('Thal', 'dFC')
+n<-0
+for (thal in thals){
+  n=n+1
+  newd2[(1+nrow(zm2)*(n-1)):(nrow(zm2)*(n)), 'Thal']<- thal
+  newd2[(1+nrow(zm2)*(n-1)):(nrow(zm2)*(n)), 'dFC']<- zm2[, n]
+  newd2[(1+nrow(zm2)*(n-1)):(nrow(zm2)*(n)), 'Subject']<- sblist
+}
+
+newd2['Dataset'] <- 'DOC'
+
+### Combine two data.frame
+d<- rbind(newd1, newd2)
+```
+
+```{r}
+#THALAMIC NUCLEUS 195
+##Scatterplot for Pulvinar Auditory
+##ggplot(data = all_data, aes(y = Thal_195, x = Auditory)) +
+       ##geom_boxplot(aes(group = as.factor(Auditory))) +
+        ##geom_point(aes(col = Diagnosis)) + 
+       ##labs(y = "Pulvinar/Cortical connectivity [ß]", x = "Auditory")
+        #geom_smooth(method = "lm", fill = NA)
+```
+
+```{r test}
+d$Thal <- factor(d$Thal)
+levels(d$Thal)
+d %>%
+  group_by(Thal, Dataset) %>%
+  get_summary_stats(dFC, type = "mean_sd")
+
+```
+
+```{r}
+head(newd1)
+```
+
+```{r}
+###group-level not needed
+rnewd1 <- newd1 %>% mutate(thal_ROI = case_when(
+  Thal ==  'Pu' ~  'ROI',
+  Thal != 'Pu' ~ 'others'
+))
+```
+
+```{r}
+###group-level not needed
+res.aov <- aov(dFC ~ thal_ROI, data = rnewd1)
+summary(res.aov)
+```
+
+```{r}
+###group-level not needed
+rnewd2 <- newd2 %>% mutate(thal_ROI = case_when(
+  Thal ==  'VLV' ~  'ROI',
+  Thal != 'VLV' ~ 'others'
+))
+```
+
+```{r}
+###group-level not needed
+res.aov <- aov(dFC ~ thal_ROI, data = rnewd2)
+summary(res.aov)
+```
+
+```{r}
+#doing mixed linear model for anaesthesia
+mlm <- lmer(dFC ~ thal_ROI + (1|Subject), data=rnewd1)
+mlm0 <- lmer(dFC ~ (1|Subject),  data=rnewd1)
+```
+
+```{r model comparison}
+smy <- summary(mlm)
+sig_test <- anova(mlm0, mlm)
+
+print(smy)
+print(sig_test)
+```
+
+```{r}
+# testing the rest of the thal nuclei are not significantly different in anaesthesia
+mlm <- lmer(dFC ~ Thal + (1|Subject), data=rnewd1[rnewd1$thal_ROI != 'ROI', ])
+mlm0 <- lmer(dFC ~ (1|Subject),  data=rnewd1[rnewd1$thal_ROI != 'ROI', ])
+
+```
+```{r model comparison}
+smy <- summary(mlm)
+sig_test <- anova(mlm0, mlm)
+
+print(smy)
+print(sig_test)
+```
+
+```{r}
+#doing mixed linear model for DOC
+mlm <- lmer(dFC ~ thal_ROI + (1|Subject), data=rnewd2)
+mlm0 <- lmer(dFC ~ (1|Subject),  data=rnewd2)
+
+```
+```{r model comparison}
+smy <- summary(mlm)
+sig_test <- anova(mlm0, mlm)
+
+print(smy)
+print(sig_test)
+```
+
+```{r}
+# testing the rest of the thal nuclei are not significantly different in anaesthesia
+mlm <- lmer(dFC ~ Thal + (1|Subject), data=rnewd2[rnewd2$thal_ROI != 'ROI', ])
+mlm0 <- lmer(dFC ~ (1|Subject),  data=rnewd2[rnewd2$thal_ROI != 'ROI', ])
+
+```
+```{r model comparison}
+smy <- summary(mlm)
+sig_test <- anova(mlm0, mlm)
+
+print(smy)
+print(sig_test)
+```
+
+```{r}
+ggboxplot(newd1, x='Thal', y = 'dFC',
+  fill = "Thal", color = "Thal",
+  palette = c("#990000","#006633", "#FFCC33", "#CC6633", "#009999","#660066", "#033399"))
+```
+
+Do multiple comparisons between THAL nuclei in DOC
+```{r}
+others <- unique(rnewd2$Thal[rnewd2$thal_ROI=='others'])
+P <- c() # record all p values from the loop
+for (other in others){
+  d_ <- rnewd2 %>% filter(Thal==other | thal_ROI== 'ROI')
+  # stats
+  # testing the rest of the thal nuclei are not significantly different in anaesthesia
+mlm <- lmer(dFC ~ Thal + (1|Subject), data=d_)
+mlm0 <- lmer(dFC ~ (1|Subject),  data=d_)
+
+smy <- summary(mlm)
+sig_test <- anova(mlm0, mlm)
+print(paste('Now testing for', other, 'vs. VLV for DOC dataset.' ))
+print(smy)
+print(sig_test)
+P <- c(P, sig_test$`Pr(>Chisq)`[2])
+}
+
+P_adj <- p.adjust(P, method='fdr')
+print(P_adj)
+
+```
+
+
+
+```{r}
+ggboxplot(newd2, x='Thal', y = 'dFC',
+  color = "Thal",
+  palette = c("#990000","#006633", "#FFCC33", "#CC6633", "#009999","#660066", "#033399"))
+```
+
+
+
+
+
